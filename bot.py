@@ -83,7 +83,6 @@ def calculate_total_soldiers(user_id, araki, gholami, pouya, zeroniga):
   return araki + (gholami * 30) + (pouya * 50) + (zeroniga * 70)
 
 
-# محاسبه جایزه بازی بر اساس مجموع ورودی دو بازیکن (برنده کل ورودی‌ها را می‌برد)
 def get_war_prize(bet):
   return bet * 2
 
@@ -108,7 +107,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# دستور راهنما بصورت دکمه‌ای و دسته‌بندی‌شده همراه با دکمه بازگشت و بخش پنل کاربر
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if update.effective_chat.type == "private":
     return
@@ -135,7 +133,6 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   )
 
 
-# دستورات اصلی متنی (بدون اسلش)
 async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if not update.message or not update.message.text:
     return
@@ -178,7 +175,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ شما در حالت مالک (نامحدود) هستید.")
       return
 
-    # دستور اختصاصی مالک: حذف موجودی کاربر با ریپلی
     elif text == "حذف موجودی":
       if not update.message.reply_to_message:
         await update.message.reply_text("⚠️ برای حذف موجودی باید روی پیام کاربر مورد نظر ریپلی کنید!")
@@ -191,27 +187,29 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_data = get_user(user_id, username)
   now = int(time.time())
 
-  # دستور راهنما
   if text in ["راهنما", "دستورات", "help"]:
     await help_handler(update, context)
     return
 
-  # پنل کاربر (با پشتیبانی از ریپلی روی شخص مورد نظر یا نمایش خود کاربر)
+  # پنل کاربر (اصلاح‌شده و کاملاً ایمن برای مالک و همه کاربران بدون استثنا)
   if text == "پنل کاربر":
-    target_user = user
-    if update.message.reply_to_message:
-      target_user = update.message.reply_to_message.from_user
-    
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+      target_u = update.message.reply_to_message.from_user
+      target_id = target_u.id
+      target_name = target_u.first_name
+    else:
+      target_id = user_id
+      target_name = user.first_name
+
     await update.message.reply_text(
         f"👤 **پنل اطلاعات کاربر:**\n\n"
-        f"🔹 نام: {target_user.first_name}\n"
-        f"🆔 آیدی عددی: `{target_user.id}`\n\n"
+        f"🔹 نام: {target_name}\n"
+        f"🆔 آیدی عددی: `{target_id}`\n\n"
         f"می‌توانید از این آیدی برای انجام حملات یا دستورات استفاده کنید.",
         parse_mode="Markdown",
     )
     return
 
-  # دستور موجودی
   if text == "موجودی":
     total_soliders = calculate_total_soldiers(user_id, user_data[2], user_data[3], user_data[4], user_data[5])
     total_pow = calculate_total_power(user_id, user_data[2], user_data[3], user_data[4], user_data[5])
@@ -227,7 +225,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # دستور قدرت
   if text == "قدرت":
     total_pow = calculate_total_power(user_id, user_data[2], user_data[3], user_data[4], user_data[5])
     keyboard = [[InlineKeyboardButton(f"🟢 قدرت تیم: {total_pow}", callback_data="none")]]
@@ -244,7 +241,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # ۱. دستور: اراکی یا لبیک یا اراک (دریافت نیروی شانسی از 1 تا 5000 هر ۵ دقیقه)
   if text in ["اراکی", "لبیک یا اراک"]:
     if user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False):
       update_user(user_id, user_data[2] + 10000, user_data[3], user_data[4], user_data[5])
@@ -252,7 +248,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       return
 
     last_claim = user_data[6]
-    if now - last_claim < 300:  # 5 دقیقه
+    if now - last_claim < 300:
       remaining = 300 - (now - last_claim)
       mins = remaining // 60
       secs = remaining % 60
@@ -271,7 +267,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎉 شانس ارتش شما چرخید!\nتعداد **{gained}** نیروی اراکی به ارتش شما اضافه شد."
     )
 
-  # ۲. دستور: گردونه (هزینه 100 نیرو و شانس‌های جدید)
   elif text == "گردونه":
     spin_cost = 100
     is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
@@ -312,7 +307,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۳. دستور: تقویت نیرو (تبدیل اراکی به غلامی با پشتیبانی از تعداد)
   elif text.startswith("تقویت نیرو"):
     parts = text.split()
     count = 1
@@ -339,7 +333,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۴. دستور: تقویت غلامی (تبدیل غلامی به پویا با پشتیبانی از تعداد)
   elif text.startswith("تقویت غلامی"):
     parts = text.split()
     count = 1
@@ -366,7 +359,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۵. دستور: تقویت پویا (تبدیل پویا به صفرنیگا - نیاز به 100 تا پویا)
   elif text.startswith("تقویت پویا"):
     parts = text.split()
     count = 1
@@ -393,7 +385,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۶. دستور: حمله مستقیم (بدون محدودیت، پشتیبانی کامل از ریپلی و آیدی عددی)
+  # دستور حمله (به‌طور کامل ایمن‌سازی شده برای مالک گروه و تمام کاربران بدون هیچ‌گونه استثنا یا توقف)
   elif text.startswith("حمله"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
@@ -403,7 +395,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_username_display = "کاربر هدف"
 
     parts = text.split()
-    if update.message.reply_to_message:
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
       target_user = update.message.reply_to_message.from_user
       target_user_id = target_user.id
       target_username_display = target_user.first_name
@@ -411,7 +403,8 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       target_user_id = int(parts[1])
       try:
         chat_member = await context.bot.get_chat_member(update.effective_chat.id, target_user_id)
-        target_username_display = chat_member.user.first_name
+        if chat_member and chat_member.user:
+          target_username_display = chat_member.user.first_name
       except Exception:
         target_username_display = f"آیدی {target_user_id}"
 
@@ -490,7 +483,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۷. دستور: جنگ (برنده کل ورودی‌ها را به عنوان جایزه می‌برد)
   elif text.startswith("جنگ"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور جنگ فقط در داخل گروه‌ها قابل اجراست!")
@@ -519,7 +511,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    prize = get_war_prize(bet)  # مجموع ورودی هر دو نفر
+    prize = get_war_prize(bet)
 
     sent_msg = await update.message.reply_text(
         f"⚔️ **درخواست جنگ جدید!**\n\n"
@@ -538,7 +530,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "message_id": sent_msg.message_id,
     }
 
-  # ۸. دستور: انتقال نیرو
   elif text.startswith("انتقال") or text.startswith("انتشار"):
     parts = text.split()
     if len(parts) < 2 or not parts[1].isdigit():
@@ -549,7 +540,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       return
 
     transfer_amount = int(parts[1])
-    if not update.message.reply_to_message:
+    if not update.message.reply_to_message or not update.message.reply_to_message.from_user:
       await update.message.reply_text(
           "⚠️ برای انتقال نیرو حتماً باید روی پیام کاربر مورد نظر ریپلی کنید!"
       )
@@ -585,14 +576,12 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# مدیریت کلیک دکمه‌های شیشه‌ای
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   query = update.callback_query
   data = query.data
   user = query.from_user
   user_id = user.id
 
-  # مدیریت منوهای راهنما همراه با دکمه بازگشت و پنل کاربر
   if data.startswith("help_"):
     await query.answer()
     if data == "help_war":
@@ -604,7 +593,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "help_spin":
       text = "🎡 **بخش شانس و گردونه:**\n\n- `گردونه` : چرخش گردونه با هزینه 100 نیرو و شانس دریافت جوایز بزرگ!"
     elif data == "help_panel":
-      text = "👤 **بخش پنل کاربر:**\n\n- `پنل کاربر` (به همراه ریپلی روی شخص) : نمایش اطلاعات حساب کاربری و آیدی عددی کاربر مورد نظر جهت انجام دستورات."
+      text = "👤 **بخش پنل کاربر:**\n\n- `پنل کاربر` : نمایش اطلاعات حساب کاربری و آیدی عددی اختصاصی شما جهت انجام دستورات."
     elif data == "help_back":
       keyboard_main = [
           [
@@ -667,7 +656,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     winner_data = get_user(winner_id)
     loser_data = get_user(loser_id)
 
-    prize = get_war_prize(bet)  # مجموع ورودی دو نفر
+    prize = get_war_prize(bet)
     winner_is_owner_admin = (winner_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
     if not winner_is_owner_admin:
       update_user(winner_id, winner_data[2] + prize, winner_data[3], winner_data[4], winner_data[5])
@@ -710,7 +699,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
   app = ApplicationBuilder().token(TOKEN).build()
 
-  # ثبت هندلرها
   app.add_handler(MessageHandler(filters.COMMAND & filters.Regex("^/start$"), start_handler))
   app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_router))
   app.add_handler(CallbackQueryHandler(button_handler))
