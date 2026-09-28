@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 TOKEN = "8559844059:AAHzw5hpToGqME76APSQvjfV0AbThOm277s"
 OWNER_ID = 8854073031
 
+# ذخیره وضعیت مالک (آیا مالک در حالت بازیکن است یا خیر)
+# {owner_id: {"is_player_mode": bool, "saved_araki": int, "saved_gholami": int, "saved_pouya": int}}
+owner_modes = {}
+
 # اتصال به دیتابیس SQLite
 conn = sqlite3.connect("araki_game.db", check_same_thread=False)
 cursor = conn.cursor()
@@ -43,7 +47,6 @@ CREATE TABLE IF NOT EXISTS users (
 conn.commit()
 
 # جدول مدیریت جنگ‌های فعال در گروه‌ها
-# {chat_id: {"creator_id": int, "creator_name": str, "bet": int, "message_id": int}}
 active_wars = {}
 
 
@@ -69,16 +72,15 @@ def update_user(user_id, araki, gholami, pouya):
 
 
 def calculate_total_power(user_id, araki, gholami, pouya):
-  if user_id == OWNER_ID:
-    return 9999999  # قدرت بی‌نهایت برای مالک
+  if user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False):
+    return 9999999  # قدرت بی‌نهایت برای مالک در حالت ادمین
   # قدرت واحدها: اراکی = 44، غلامی = 60، پویا = 80
   return (araki * 44) + (gholami * 60) + (pouya * 80)
 
 
 def calculate_total_soldiers(user_id, araki, gholami, pouya):
-  if user_id == OWNER_ID:
-    return 999999999  # سرباز بی‌نهایت برای مالک
-  # هر غلامی معادل 30 سرباز، هر پویا معادل 50 سرباز، هر اراکی 1 سرباز
+  if user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False):
+    return 999999999  # سرباز بی‌نهایت برای مالک در حالت ادمین
   return araki + (gholami * 30) + (pouya * 50)
 
 
@@ -118,7 +120,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# دستور راهنما بصورت دکمه‌ای و دسته‌بندی‌شده
+# دستور راهنما بصورت دکمه‌ای و دسته‌بندی‌شده همراه با دکمه بازگشت
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if update.effective_chat.type == "private":
     return
@@ -151,6 +153,49 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user = update.effective_user
   user_id = user.id
   username = user.username or user.first_name
+
+  # بررسی حالت مالک
+  if user_id == OWNER_ID:
+    if text == "حالت بازیکن":
+      if OWNER_ID not in owner_modes or not owner_modes[OWNER_ID]["is_player_mode"]:
+        # ذخیره نیروهای فعلی ادمین و صفر کردن موقت
+        u_data = get_user(OWNER_ID)
+        owner_modes[OWNER_ID] = {
+            "is_player_mode": True,
+            "saved_araki": u_data[2],
+            "saved_gholami": u_data[3],
+            "saved_pouya": u_data[4],
+        }
+        update_user(OWNER_ID, 0, 0, 0)
+        await update.message.reply_text("👤 حالت مالک تغییر کرد: شما اکنون در **حالت بازیکن** هستید و ارتش شما صفر شد.")
+      else:
+        await update.message.reply_text("⚠️ شما از قبل در حالت بازیکن هستید.")
+      return
+
+    elif text == "حالت مالک":
+      if OWNER_ID in owner_modes and owner_modes[OWNER_ID]["is_player_mode"]:
+        # بازیابی نیروهای ذخیره شده قبلی مالک همراه با نیروهایی که جدیداً به دست آورده
+        u_data = get_user(OWNER_ID)
+        restored_araki = u_data[2] + owner_modes[OWNER_ID]["saved_araki"]
+        restored_gholami = u_data[3] + owner_modes[OWNER_ID]["saved_gholami"]
+        restored_pouya = u_data[4] + owner_modes[OWNER_ID]["saved_pouya"]
+        
+        update_user(OWNER_ID, restored_araki, restored_gholami, restored_pouya)
+        owner_modes[OWNER_ID]["is_player_mode"] = False
+        await update.message.reply_text("👑 حالت مالک بازگشت: قدرتمند شدید و تمام نیروهای قبلی شما بازگردانده شدند!")
+      else:
+        await update.message.reply_text("⚠️ شما در حالت مالک (نامحدود) هستید.")
+      return
+
+    # دستور اختصاصی مالک: حذف موجودی کاربر با ریپلی
+    elif text == "حذف موجودی":
+      if not update.message.reply_to_message:
+        await update.message.reply_text("⚠️ برای حذف موجودی باید روی پیام کاربر مورد نظر ریپلی کنید!")
+        return
+      target_user = update.message.reply_to_message.from_user
+      update_user(target_user.id, 0, 0, 0)
+      await update.message.reply_text(f"🗑️ موجودی کاربر {target_user.first_name} با موفقیت کامل صفر شد.")
+      return
 
   user_data = get_user(user_id, username)
   now = int(time.time())
@@ -193,7 +238,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   # ۱. دستور: اراکی (دریافت نیروی شانسی از 1 تا 5000 هر ۵ دقیقه)
   if text == "اراکی":
-    if user_id == OWNER_ID:
+    if user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False):
       update_user(user_id, user_data[2] + 10000, user_data[3], user_data[4])
       await update.message.reply_text("👑 مالک بزرگ! نیروی ویژه به حساب شما اضافه شد.")
       return
@@ -218,24 +263,20 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎉 شانس ارتش شما چرخید!\nتعداد **{gained}** نیروی اراکی به ارتش شما اضافه شد."
     )
 
-  # ۲. دستور: گردونه (کسر 100 نیرو و شانس‌های جدید)
+  # ۲. دستور: گردونه (هزینه 100 نیرو و شانس‌های جدید)
   elif text == "گردونه":
     spin_cost = 100
-    if user_id != OWNER_ID and user_data[2] < spin_cost:
+    is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
+    if not is_owner_admin and user_data[2] < spin_cost:
       await update.message.reply_text(
           f"⚠️ موجودی شما برای این بازی کافی نیست! (گردونه نیازمند {spin_cost} نیروی اراکی است)"
       )
       return
 
-    if user_id != OWNER_ID:
+    if not is_owner_admin:
       update_user(user_id, user_data[2] - spin_cost, user_data[3], user_data[4])
       user_data = get_user(user_id)
 
-    # شانس‌های گردونه:
-    # 0.0000000000001% -> 100000
-    # 1% -> 5000
-    # 25% -> 1000
-    # 50% -> 500 / 100 / 50 / 1 (بقیه بازه‌ها)
     rand_val = random.random() * 100
     if rand_val <= 0.0000000000001:
       prize = 100000
@@ -263,7 +304,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۳. دستور: تقویت نیرو (با پشتیبانی از تعداد مثل "تقویت نیرو 10")
+  # ۳. دستور: تقویت نیرو (تبدیل اراکی به غلامی با پشتیبانی از تعداد)
   elif text.startswith("تقویت نیرو"):
     parts = text.split()
     count = 1
@@ -271,13 +312,14 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       count = int(parts[2])
 
     cost = count * 100
-    if user_id != OWNER_ID and user_data[2] < cost:
+    is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
+    if not is_owner_admin and user_data[2] < cost:
       await update.message.reply_text(
           f"⚠️ موجودی شما برای این بازی کافی نیست! (حداقل به {cost} نیروی اراکی نیاز دارید)"
       )
       return
 
-    if user_id != OWNER_ID:
+    if not is_owner_admin:
       new_araki = user_data[2] - cost
       new_gholami = user_data[3] + count
       update_user(user_id, new_araki, new_gholami, user_data[4])
@@ -289,21 +331,22 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۴. دستور: تقویت غلامی (تبدیل ۳۰ غلامی به ۱ پویا با پشتیبانی از تعداد و کسر دقیق)
+  # ۴. دستور: تقویت غلامی (تبدیل غلامی به پویا با پشتیبانی از تعداد)
   elif text.startswith("تقویت غلامی"):
     parts = text.split()
     count = 1
-    if len(parts) >= 2 and parts[2].isdigit():
+    if len(parts) >= 3 and parts[2].isdigit():
       count = int(parts[2])
 
     cost_gholami = count * 30
-    if user_id != OWNER_ID and user_data[3] < cost_gholami:
+    is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
+    if not is_owner_admin and user_data[3] < cost_gholami:
       await update.message.reply_text(
           f"⚠️ موجودی شما برای این بازی کافی نیست! (به {cost_gholami} غلامی نیاز است)"
       )
       return
 
-    if user_id != OWNER_ID:
+    if not is_owner_admin:
       new_gholami = user_data[3] - cost_gholami
       new_pouya = user_data[4] + count
       update_user(user_id, user_data[2], new_gholami, new_pouya)
@@ -311,11 +354,37 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       update_user(user_id, user_data[2], user_data[3] - cost_gholami, user_data[4] + count)
 
     await update.message.reply_text(
-        f"🚀 تقویت نسخه ۲ انجام شد!\n{cost_gholami} غلامی مصرف شد و **{count} نیروی پویا** (قدرت: 80) به ارتش پیوست.",
+        f"🚀 تقویت غلامی انجام شد!\n{cost_gholami} غلامی مصرف شد و **{count} نیروی پویا** به ارتش پیوست.",
         parse_mode="Markdown",
     )
 
-  # ۵. دستور: حمله مستقیم با نمایش تعداد نیروهای از دست رفته
+  # ۵. دستور جدید: تقویت پویا (نیاز به 100 تا پویا)
+  elif text.startswith("تقویت پویا"):
+    parts = text.split()
+    count = 1
+    if len(parts) >= 3 and parts[2].isdigit():
+      count = int(parts[2])
+
+    cost_pouya = count * 100
+    is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
+    if not is_owner_admin and user_data[4] < cost_pouya:
+      await update.message.reply_text(
+          f"⚠️ موجودی شما برای این بازی کافی نیست! (به {cost_pouya} نیروی پویا نیاز است)"
+      )
+      return
+
+    if not is_owner_admin:
+      new_pouya = user_data[4] - cost_pouya  # کسر پویای مصرفی (یا مکانیزم دلخواه ارتقای نهایی)
+      update_user(user_id, user_data[2], user_data[3], new_pouya + count)
+    else:
+      update_user(user_id, user_data[2], user_data[3], user_data[4] + count)
+
+    await update.message.reply_text(
+        f"🌟 تقویت پویا انجام شد!\n{cost_pouya} نیروی پویا ارتقا یافتند و ارتش شما قدرتمندتر شد.",
+        parse_mode="Markdown",
+    )
+
+  # ۶. دستور: حمله مستقیم با جزئیات دقیق تلفات هر طرف
   elif text == "حمله":
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
@@ -332,14 +401,14 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       await update.message.reply_text("⚠️ نمی‌توانید به خودتان حمله کنید!")
       return
 
+    is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
     attacker_total_soldiers = calculate_total_soldiers(user_id, user_data[2], user_data[3], user_data[4])
-    if user_id != OWNER_ID and attacker_total_soldiers < 10:
+    if not is_owner_admin and attacker_total_soldiers < 10:
       await update.message.reply_text("⚠️ موجودی شما برای این بازی کافی نیست!")
       return
 
     target_data = get_user(target_user.id, target_user.username or target_user.first_name)
 
-    # قدرت و امتیازات حمله
     attacker_power = calculate_total_power(user_id, user_data[2], user_data[3], user_data[4])
     target_power = calculate_total_power(target_user.id, target_data[2], target_data[3], target_data[4])
 
@@ -358,23 +427,27 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       winner_name, loser_name = target_user.first_name, user.first_name
       winner_data, loser_data = target_data, user_data
 
-    # محاسبه تلفات و غنائم
-    lost_araki = random.randint(2, 10)
+    # محاسبه تلفات دقیق برای هر دو طرف
+    loser_lost_araki = random.randint(5, 15)
+    winner_lost_araki = random.randint(2, 8)
+
     loot_araki = loser_data[2] // 3
     loot_gholami = loser_data[3] // 3
     loot_pouya = loser_data[4] // 3
 
-    # به‌روزرسانی بازنده
-    new_loser_araki = max(0, loser_data[2] - loot_araki - lost_araki)
+    # اعمال تغییرات بازنده
+    new_loser_araki = max(0, loser_data[2] - loot_araki - loser_lost_araki)
     new_loser_gholami = max(0, loser_data[3] - loot_gholami)
     new_loser_pouya = max(0, loser_data[4] - loot_pouya)
     update_user(loser_id, new_loser_araki, new_loser_gholami, new_loser_pouya)
 
-    # به‌روزرسانی برنده
-    new_winner_araki = winner_data[2] + loot_araki - random.randint(1, 5)
-    new_winner_gholami = winner_data[3] + loot_gholami
-    new_winner_pouya = winner_data[4] + loot_pouya
-    update_user(winner_id, max(0, new_winner_araki), new_winner_gholami, new_winner_pouya)
+    # اعمال تغییرات برنده
+    is_winner_owner_admin = (winner_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
+    if not is_winner_owner_admin:
+      new_winner_araki = max(0, winner_data[2] + loot_araki - winner_lost_araki)
+      new_winner_gholami = winner_data[3] + loot_gholami
+      new_winner_pouya = winner_data[4] + loot_pouya
+      update_user(winner_id, new_winner_araki, new_winner_gholami, new_winner_pouya)
 
     updated_u1 = get_user(user_id)
     updated_u2 = get_user(target_user.id)
@@ -383,14 +456,16 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚔️ **نتیجه نبرد و حمله مستقیم!**\n\n"
         f"🏆 **برنده میدان:** {winner_name}\n"
         f"💀 **شکست خورده:** {loser_name}\n\n"
-        f"💥 **تلفات جنگ:** در این حمله تعدادی از نیروهای دو طرف از دست رفتند.\n\n"
+        f"💥 **تلفات جنگ:**\n"
+        f"👤 {user.first_name}: {winner_lost_araki if winner_id == user_id else loser_lost_araki} سرباز از دست داد.\n"
+        f"👤 {target_user.first_name}: {winner_lost_araki if winner_id == target_user.id else loser_lost_araki} سرباز از دست داد.\n\n"
         f"🛡️ **موجودی جدید دو طرف:**\n"
         f"👤 {user.first_name} ➔ اراکی: {updated_u1[2]} | غلامی: {updated_u1[3]} | پویا: {updated_u1[4]}\n"
         f"👤 {target_user.first_name} ➔ اراکی: {updated_u2[2]} | غلامی: {updated_u2[3]} | پویا: {updated_u2[4]}",
         parse_mode="Markdown",
     )
 
-  # ۶. دستور: جنگ
+  # ۷. دستور: جنگ
   elif text.startswith("جنگ"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور جنگ فقط در داخل گروه‌ها قابل اجراست!")
@@ -404,8 +479,9 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       return
 
     bet = int(parts[1])
+    is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
     total_soliders = calculate_total_soldiers(user_id, user_data[2], user_data[3], user_data[4])
-    if user_id != OWNER_ID and total_soliders < bet:
+    if not is_owner_admin and total_soliders < bet:
       await update.message.reply_text(
           f"⚠️ موجودی شما برای این بازی کافی نیست! (موجودی کل: {total_soliders})"
       )
@@ -437,7 +513,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "message_id": sent_msg.message_id,
     }
 
-  # ۷. دستور: انتقال نیرو
+  # ۸. دستور: انتقال نیرو
   elif text.startswith("انتقال") or text.startswith("انتشار"):
     parts = text.split()
     if len(parts) < 2 or not parts[1].isdigit():
@@ -460,8 +536,9 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       return
 
     target_data = get_user(target_user.id, target_user.username or target_user.first_name)
+    is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
 
-    if user_id != OWNER_ID:
+    if not is_owner_admin:
       sender_total = calculate_total_soldiers(user_id, user_data[2], user_data[3], user_data[4])
       if sender_total < transfer_amount:
         await update.message.reply_text("⚠️ موجودی شما برای این بازی کافی نیست!")
@@ -490,7 +567,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user = query.from_user
   user_id = user.id
 
-  # مدیریت منوهای راهنما
+  # مدیریت منوهای راهنما همراه با دکمه بازگشت
   if data.startswith("help_"):
     await query.answer()
     if data == "help_war":
@@ -498,13 +575,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "help_army":
       text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی\n- `انتقال [تعداد]` : فرستادن نیرو به دوستان"
     elif data == "help_upgrade":
-      text = "⚡ **بخش تقویت و ارتقا:**\n\n- `تقویت نیرو [تعداد]` : تبدیل اراکی به غلامی (هر 100 اراکی = 1 غلامی)\n- `تقویت غلامی [تعداد]` : تبدیل غلامی به پویا (هر 30 غلامی = 1 پویا)"
+      text = "⚡ **بخش تقویت و ارتقا:**\n\n- `تقویت نیرو [تعداد]` : تبدیل اراکی به غلامی (100 اراکی)\n- `تقویت غلامی [تعداد]` : تبدیل غلامی به پویا (30 غلامی)\n- `تقویت پویا [تعداد]` : ارتقای پویایی‌ها (100 پویا)"
     elif data == "help_spin":
       text = "🎡 **بخش شانس و گردونه:**\n\n- `گردونه` : چرخش گردونه با هزینه 100 نیرو و شانس دریافت جوایز بزرگ!"
-    else:
-      text = "راهنمای بازی اراکی‌ها"
-    
-    await query.edit_message_text(text, parse_mode="Markdown")
+    elif data == "help_back":
+      # بازگشت به منوی اصلی راهنما
+      keyboard_main = [
+          [
+              InlineKeyboardButton("⚔️ بخش نبرد و جنگ", callback_data="help_war"),
+              InlineKeyboardButton("🛡️ ارتش و نیروها", callback_data="help_army")
+          ],
+          [
+              InlineKeyboardButton("⚡ تقویت و ارتقا", callback_data="help_upgrade"),
+              InlineKeyboardButton("🎡 شانس و گردونه", callback_data="help_spin")
+          ]
+      ]
+      await query.edit_message_text(
+          "📖 **منوی راهنمای جامع بازی اراکی‌ها**\n\nلطفاً یکی از بخش‌های زیر را انتخاب کنید:",
+          reply_markup=InlineKeyboardMarkup(keyboard_main),
+          parse_mode="Markdown"
+      )
+      return
+
+    # دکمه بازگشت به منوی قبلی راهنما
+    back_keyboard = [[InlineKeyboardButton("🔙 بازگشت به منوی راهنما", callback_data="help_back")]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(back_keyboard), parse_mode="Markdown")
     return
 
   await query.answer()
@@ -524,16 +619,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     creator_id = war["creator_id"]
 
     joiner_data = get_user(user_id, user.username or user.first_name)
+    joiner_is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
     joiner_total = calculate_total_soldiers(user_id, joiner_data[2], joiner_data[3], joiner_data[4])
-    if user_id != OWNER_ID and joiner_total < bet:
+    if not joiner_is_owner_admin and joiner_total < bet:
       await query.answer("موجودی شما برای این بازی کافی نیست!", show_alert=True)
       return
 
     creator_data = get_user(creator_id)
+    creator_is_owner_admin = (creator_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
 
-    if creator_id != OWNER_ID:
+    if not creator_is_owner_admin:
       update_user(creator_id, max(0, creator_data[2] - bet), creator_data[3], creator_data[4])
-    if user_id != OWNER_ID:
+    if not joiner_is_owner_admin:
       update_user(user_id, max(0, joiner_data[2] - bet), joiner_data[3], joiner_data[4])
 
     winner_id = random.choice([creator_id, user_id])
@@ -543,7 +640,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loser_data = get_user(loser_id)
 
     prize = get_war_prize(bet)
-    update_user(winner_id, winner_data[2] + bet + prize, winner_data[3], winner_data[4])
+    winner_is_owner_admin = (winner_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
+    if not winner_is_owner_admin:
+      update_user(winner_id, winner_data[2] + bet + prize, winner_data[3], winner_data[4])
 
     winner_name = war["creator_name"] if winner_id == creator_id else user.first_name
     loser_name = user.first_name if winner_id == creator_id else war["creator_name"]
