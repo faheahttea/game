@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# اطلاعات پایه‌ای
+# اطلاعات پایه‌ای (آیدی عددی مالکاصلی: 8854073031)
 TOKEN = "8559844059:AAHzw5hpToGqME76APSQvjfV0AbThOm277s"
 OWNER_ID = 8854073031
 
@@ -56,10 +56,10 @@ def get_user(user_id, username=""):
   if not row:
     cursor.execute(
         "INSERT INTO users (user_id, username, araki) VALUES (?, ?, ?)",
-        (user_id, username, 0),
+        (user_id, username or "User", 0),
     )
     conn.commit()
-    return (user_id, username, 0, 0, 0, 0, 0, 0)
+    return (user_id, username or "User", 0, 0, 0, 0, 0, 0)
   return row
 
 
@@ -191,7 +191,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await help_handler(update, context)
     return
 
-  # پنل کاربر (کاملاً ایمن‌سازی شده برای تمامی کاربران، مالکان و آیدی‌های خاص)
+  # پنل کاربر (کاملاً ایمن‌سازی شده برای تمامی کاربران)
   if text == "پنل کاربر":
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
       target_u = update.message.reply_to_message.from_user
@@ -281,10 +281,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       user_data = get_user(user_id)
 
     rand_val = random.random() * 100
-    if rand_val <= 0.0000000000001:
-      prize = 100000
-      msg = "💎 فوق اسطوره‌ای! جایزه باورنکردنی ۱۰۰,۰۰۰ نیرویی برنده شدید!"
-    elif rand_val <= 1.0:
+    if rand_val <= 1.0:
       prize = 5000
       msg = "🌟 افسانه‌ای! ۵۰۰۰ نیرو برنده شدید!"
     elif rand_val <= 26.0:
@@ -385,7 +382,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # دستور حمله (به‌طور کامل رفع باگ شده برای همه کاربران بدون استثنا)
+  # دستور حمله
   elif text.startswith("حمله"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
@@ -406,11 +403,11 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chat_member and chat_member.user:
           target_username_display = chat_member.user.first_name
       except Exception:
-        target_username_display = f"آیدی {target_user_id}"
+        target_username_display = f"کاربر {target_user_id}"
 
     if not target_user_id:
       await update.message.reply_text(
-          "⚠️ برای حمله یا باید روی پیام کاربر ریپلی کنید یا آیدی عددی او را بنویسید! (مثال: `حمله 123456789`)",
+          "⚠️ برای حمله یا باید روی پیام کاربر ریپلی کنید یا آیدی عددی او را بنویسید! (مثال: `حمله 8854073031`)",
           parse_mode="Markdown",
       )
       return
@@ -483,7 +480,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # دستورات: جنگ و بازی (زد بازی 1000 و غیره)
+  # دستورات: جنگ و بازی
   elif text.startswith("جنگ") or text.startswith("بازی"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستورات مسابقه فقط در داخل گروه‌ها قابل اجراست!")
