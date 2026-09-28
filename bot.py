@@ -77,7 +77,7 @@ def update_user(user_id, araki, gholami, pouya, zeroniga, arsam_fathi):
 def calculate_total_power(user_id, araki, gholami, pouya, zeroniga, arsam_fathi):
   if user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False):
     return 9999999  # قدرت بی‌نهایت برای مالک در حالت ادمین
-  return (araki * 44) + (gholami * 60) + (pouya * 80) + (zeroniga * 90) + (arsam_fathi * 100)
+  return (araki * 44) + (gholami * 60) + (pouya * 80) + (zeroniga * 90) + (arsam_fathi * 120)
 
 
 def calculate_total_soldiers(user_id, araki, gholami, pouya, zeroniga, arsam_fathi):
@@ -202,7 +202,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔹 غلامی‌ها: {user_data[3]}\n"
         f"🚀 پویایی‌ها: {user_data[4]}\n"
         f"💎 صفرنیگاها: {user_data[5]}\n"
-        f"👷‍♂️ ارسام فتحی: {user_data[6]} (از ۵ تا)\n\n"
+        f"👷‍♂️ ارسام فتحی: {user_data[6]}\n\n"
         f"👥 کل سربازها: {total_soliders}\n"
         f"⚡ قدرت کل ارتش: {total_pow}",
         parse_mode="Markdown",
@@ -219,7 +219,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔹 غلامی (قدرت 60): {user_data[3]}\n"
         f"🚀 پویا (قدرت 80): {user_data[4]}\n"
         f"💎 صفرنیگا (قدرت 90): {user_data[5]}\n"
-        f"👷‍♂️ ارسام فتحی (قدرت 100): {user_data[6]}\n\n"
+        f"👷‍♂️ ارسام فتحی (قدرت 120): {user_data[6]}\n\n"
         f"⚡ **مجموع قدرت:** {total_pow}",
         reply_markup=reply_markup,
         parse_mode="Markdown",
@@ -298,18 +298,11 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_arsam = user_data[6]
     is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
 
-    if not is_owner_admin and (current_arsam + count) > 5:
-      allowed_to_buy = 5 - current_arsam
-      if allowed_to_buy <= 0:
-        await update.message.reply_text("⚠️ شما حداکثر تعداد کارگر ارسام فتحی (۵ عدد) را خریده‌اید و بیشتر از آن امکان‌پذیر نیست!")
-      else:
-        await update.message.reply_text(f"⚠️ شما فقط می‌توانید حداکثر تا ۵ عدد کارگر ارسام فتحی داشته باشید. در حال حاضر {current_arsam} دارید و فقط می‌توانید {allowed_to_buy} عدد دیگر بخرید.")
-      return
-
-    cost = count * 10000
+    # سقف خرید برداشته شد (بدون محدودیت تعداد)
+    cost = count * 100000
     if not is_owner_admin and user_data[2] < cost:
       await update.message.reply_text(
-          f"⚠️ موجودی شما کافی نیست! هر کارگر (ارسام فتحی) نیازمند ۱۰,۰۰۰ نیروی اراکی است. (کل هزینه: {cost})"
+          f"⚠️ موجودی شما کافی نیست! هر کارگر ارسام فتحی نیازمند ۱۰۰,۰۰۰ نیروی اراکی است. (کل هزینه برای {count} عدد: {cost})"
       )
       return
 
@@ -322,7 +315,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👷‍♂️ استخدام موفقیت‌آمیز!\n{cost} نیروی اراکی مصرف شد و **{count} کارگر (ارسام فتحی)** اضافه شد.\n"
-        f"کل کارگرهای شما: {current_arsam + count} از ۵",
+        f"کل کارگرهای شما: {current_arsam + count}",
         parse_mode="Markdown",
     )
 
@@ -346,7 +339,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     hours_passed = elapsed_seconds // 3600
 
-    # جدول دقیق حقوق بر اساس تعداد کارگر (سام فتحی)
+    # جدول حقوق بر اساس تعداد کارگر (ارسام فتحی)
     salary_map = {
         1: 1000,
         2: 2000,
@@ -355,7 +348,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         5: 100000
     }
     
-    per_hour_rate = salary_map.get(arsam_count, 100000)
+    per_hour_rate = salary_map.get(arsam_count, arsam_count * 20000)
     earned_araki = per_hour_rate * hours_passed
     
     new_last_claim_time = last_worker_claim + (hours_passed * 3600)
@@ -371,7 +364,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 **حقوق کارگری دریافت شد!**\n\n"
         f"👷‍♂️ تعداد کارگران (ارسام فتحی): {arsam_count}\n"
         f"⏱️ ساعت‌های محاسبه‌شده: {hours_passed} ساعت\n"
-        f"🎉 سود دریافتی ({per_hour_rate} در هر ساعت): **{earned_araki}** نیروی اراکی اضافه شد!",
+        f"🎉 سود دریافتی: **{earned_araki}** نیروی اراکی اضافه شد!",
         parse_mode="Markdown",
     )
 
@@ -657,9 +650,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "help_war":
       text = "⚔️ **بخش نبرد و جنگ:**\n\n- `جنگ [مبلغ]` یا `بازی [مبلغ]` : ایجاد مسابقه جنگی\n- `حمله` (ریپلی یا آیدی عددی) : حمله مستقیم"
     elif data == "help_army":
-      text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی\n- `حقوق کارگری` : دریافت سود کارگران (ارسام فتحی)\n- `تقویت کارگر [تعداد]` : خرید کارگر (حداکثر ۵ عدد)"
+      text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی\n- `حقوق کارگری` : دریافت سود کارگران (ارسام فتحی)\n- `تقویت کارگر [تعداد]` : خرید کارگر (هر عدد ۱۰۰,۰۰۰ اراکی - بدون محدودیت تعداد)"
     elif data == "help_upgrade":
-      text = "⚡ **بخش تقویت و ارتقا:**\n\n- `تقویت نیرو [تعداد]` : تبدیل اراکی به غلامی\n- `تقویت غلامی [تعداد]` : تبدیل غلامی به پویا\n- `تقویت پویا [تعداد]` : تبدیل پویا به صفرنیگا"
+      text = "⚡ **بخش تقویت و ارتقا:**\n\n- `تقویت نیرو [تعداد]` : تبدیل اراکی به غلامی (بدون سقف)\n- `تقویت غلامی [تعداد]` : تبدیل غلامی به پویا (بدون سقف)\n- `تقویت پویا [تعداد]` : تبدیل پویا به صفرنیگا (بدون سقف)"
     elif data == "help_spin":
       text = "🎡 **بخش شانس و گردونه:**\n\n- `گردونه` : چرخش گردونه با هزینه 100 نیرو"
     elif data == "help_back":
