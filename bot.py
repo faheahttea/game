@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
 )
 conn.commit()
 
-# جدول مدیریت جنگ‌های فعال در گروه‌ها
+# جدول مدیریت جنگ‌ها و بازی‌های فعال در گروه‌ها
 active_wars = {}
 
 
@@ -191,7 +191,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await help_handler(update, context)
     return
 
-  # پنل کاربر (اصلاح‌شده و کاملاً ایمن برای مالک و همه کاربران بدون استثنا)
+  # پنل کاربر (کاملاً ایمن‌سازی شده برای تمامی کاربران، مالکان و آیدی‌های خاص)
   if text == "پنل کاربر":
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
       target_u = update.message.reply_to_message.from_user
@@ -205,7 +205,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 **پنل اطلاعات کاربر:**\n\n"
         f"🔹 نام: {target_name}\n"
         f"🆔 آیدی عددی: `{target_id}`\n\n"
-        f"می‌توانید از این آیدی برای انجام حملات یا دستورات استفاده کنید.",
+        f"کانال رسمی اراکی‌ها: https://t.me/arak_city12",
         parse_mode="Markdown",
     )
     return
@@ -385,7 +385,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # دستور حمله (به‌طور کامل ایمن‌سازی شده برای مالک گروه و تمام کاربران بدون هیچ‌گونه استثنا یا توقف)
+  # دستور حمله (به‌طور کامل رفع باگ شده برای همه کاربران بدون استثنا)
   elif text.startswith("حمله"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
@@ -483,15 +483,16 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  elif text.startswith("جنگ"):
+  # دستورات: جنگ و بازی (زد بازی 1000 و غیره)
+  elif text.startswith("جنگ") or text.startswith("بازی"):
     if update.effective_chat.type == "private":
-      await update.message.reply_text("⚠️ دستور جنگ فقط در داخل گروه‌ها قابل اجراست!")
+      await update.message.reply_text("⚠️ دستورات مسابقه فقط در داخل گروه‌ها قابل اجراست!")
       return
 
     parts = text.split()
     if len(parts) < 2 or not parts[1].isdigit():
       await update.message.reply_text(
-          "⚠️ فرمت دستور جنگ اشتباه است. مثال: `جنگ 3000`", parse_mode="Markdown"
+          "⚠️ فرمت دستور اشتباه است. مثال: `جنگ 3000` یا `بازی 1000`", parse_mode="Markdown"
       )
       return
 
@@ -514,7 +515,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prize = get_war_prize(bet)
 
     sent_msg = await update.message.reply_text(
-        f"⚔️ **درخواست جنگ جدید!**\n\n"
+        f"⚔️ **درخواست مسابقه و جنگ جدید!**\n\n"
         f"👤 سازنده بازی: {user.first_name}\n"
         f"🎯 تعداد نیرو (ورودی): {bet}\n"
         f"🏆 جایزه برنده: {prize} اراکی (مجموع ورودی دو نفر)\n\n"
@@ -585,7 +586,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if data.startswith("help_"):
     await query.answer()
     if data == "help_war":
-      text = "⚔️ **بخش نبرد و جنگ:**\n\n- `جنگ [مبلغ]` : ایجاد مسابقه جنگی (برنده کل ورودی‌ها را می‌برد)\n- `حمله` (ریپلی یا آیدی عددی) : حمله مستقیم با تمام نیروها"
+      text = "⚔️ **بخش نبرد و جنگ:**\n\n- `جنگ [مبلغ]` یا `بازی [مبلغ]` : ایجاد مسابقه جنگی (برنده کل ورودی‌ها را می‌برد)\n- `حمله` (ریپلی یا آیدی عددی) : حمله مستقیم با تمام نیروها"
     elif data == "help_army":
       text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` یا `لبیک یا اراک` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی\n- `انتقال [تعداد]` : فرستادن نیرو به دوستان"
     elif data == "help_upgrade":
@@ -670,7 +671,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     final_loser_data = get_user(loser_id)
 
     await query.edit_message_text(
-        f"⚔️ **نتیجه جنگ اعلام شد!**\n\n"
+        f"⚔️ **نتیجه مسابقه اعلام شد!**\n\n"
         f"🏆 **برنده:** {winner_name}\n"
         f"💀 **بازنده:** {loser_name}\n\n"
         f"🎁 پاداش برنده: {prize} اراکی (مجموع ورودی هر دو بازیکن)\n"
