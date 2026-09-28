@@ -177,13 +177,13 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ شما در حالت مالک (نامحدود) هستید.")
       return
 
-    elif text == "حذف موجودی":
+    elif text in ["حذف موجودی", "حذف نیرو"]:
       if not update.message.reply_to_message:
-        await update.message.reply_text("⚠️ برای حذف موجودی باید روی پیام کاربر مورد نظر ریپلی کنید!")
+        await update.message.reply_text("⚠️ برای حذف نیروهای کاربر باید روی پیام او ریپلی کنید!")
         return
       target_user = update.message.reply_to_message.from_user
       update_user(target_user.id, 0, 0, 0, 0, 0)
-      await update.message.reply_text(f"🗑️ موجودی کاربر {target_user.first_name} با موفقیت کامل صفر شد.")
+      await update.message.reply_text(f"🗑️ تمام نیروها و کارگرهای کاربر {target_user.first_name} با دستور مالک حذف و صفر شدند.")
       return
 
   user_data = get_user(user_id, username)
@@ -202,7 +202,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔹 غلامی‌ها: {user_data[3]}\n"
         f"🚀 پویایی‌ها: {user_data[4]}\n"
         f"💎 صفرنیگاها: {user_data[5]}\n"
-        f"👷‍♂️ ارسام فتحی (کارگر): {user_data[6]}\n\n"
+        f"👷‍♂️ ارسام فتحی: {user_data[6]} (از ۵ تا)\n\n"
         f"👥 کل سربازها: {total_soliders}\n"
         f"⚡ قدرت کل ارتش: {total_pow}",
         parse_mode="Markdown",
@@ -232,7 +232,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       await update.message.reply_text("👑 مالک بزرگ! نیروی ویژه به حساب شما اضافه شد.")
       return
 
-    last_claim = user_data[7]  # index 7 is last_claim
+    last_claim = user_data[7]
     if now - last_claim < 300:
       remaining = 300 - (now - last_claim)
       mins = remaining // 60
@@ -295,8 +295,18 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(parts) >= 3 and parts[2].isdigit():
       count = int(parts[2])
 
-    cost = count * 10000
+    current_arsam = user_data[6]
     is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
+
+    if not is_owner_admin and (current_arsam + count) > 5:
+      allowed_to_buy = 5 - current_arsam
+      if allowed_to_buy <= 0:
+        await update.message.reply_text("⚠️ شما حداکثر تعداد کارگر ارسام فتحی (۵ عدد) را خریده‌اید و بیشتر از آن امکان‌پذیر نیست!")
+      else:
+        await update.message.reply_text(f"⚠️ شما فقط می‌توانید حداکثر تا ۵ عدد کارگر ارسام فتحی داشته باشید. در حال حاضر {current_arsam} دارید و فقط می‌توانید {allowed_to_buy} عدد دیگر بخرید.")
+      return
+
+    cost = count * 10000
     if not is_owner_admin and user_data[2] < cost:
       await update.message.reply_text(
           f"⚠️ موجودی شما کافی نیست! هر کارگر (ارسام فتحی) نیازمند ۱۰,۰۰۰ نیروی اراکی است. (کل هزینه: {cost})"
@@ -305,20 +315,21 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_owner_admin:
       new_araki = user_data[2] - cost
-      new_arsam = user_data[6] + count
+      new_arsam = current_arsam + count
       update_user(user_id, new_araki, user_data[3], user_data[4], user_data[5], new_arsam)
     else:
-      update_user(user_id, user_data[2], user_data[3], user_data[4], user_data[5], user_data[6] + count)
+      update_user(user_id, user_data[2], user_data[3], user_data[4], user_data[5], current_arsam + count)
 
     await update.message.reply_text(
-        f"👷‍♂️ استخدام موفقیت‌آمیز!\n{cost} نیروی اراکی مصرف شد و **{count} کارگر (ارسام فتحی)** به جمع کارگران شما اضافه شد.\nهر کدام هر ساعت ۱۰۰ نیرو تولید می‌کنند.",
+        f"👷‍♂️ استخدام موفقیت‌آمیز!\n{cost} نیروی اراکی مصرف شد و **{count} کارگر (ارسام فتحی)** اضافه شد.\n"
+        f"کل کارگرهای شما: {current_arsam + count} از ۵",
         parse_mode="Markdown",
     )
 
   elif text == "حقوق کارگری":
     arsam_count = user_data[6]
     if arsam_count <= 0:
-      await update.message.reply_text("⚠️ شما هیچ کارگری (ارسام فتحی) ندارید! با دستور `تقویت کارگر [تعداد]` کارگر استخدام کنید.")
+      await update.message.reply_text("⚠️ شما هیچ کارگری (ارسام فتحی) ندارید!")
       return
 
     last_worker_claim = user_data[9] if len(user_data) > 9 and user_data[9] else user_data[7]
@@ -334,11 +345,22 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       return
 
     hours_passed = elapsed_seconds // 3600
-    earned_araki = arsam_count * 100 * hours_passed
-    # تنظیم زمان جدید به اندازه ساعت‌های محاسبه شده برای اینکه باقیمانده زمان حفظ شود
-    new_last_claim_time = last_worker_claim + (hours_passed * 3600)
 
+    # جدول دقیق حقوق بر اساس تعداد کارگر (سام فتحی)
+    salary_map = {
+        1: 1000,
+        2: 2000,
+        3: 20000,
+        4: 50000,
+        5: 100000
+    }
+    
+    per_hour_rate = salary_map.get(arsam_count, 100000)
+    earned_araki = per_hour_rate * hours_passed
+    
+    new_last_claim_time = last_worker_claim + (hours_passed * 3600)
     new_araki = user_data[2] + earned_araki
+    
     update_user(user_id, new_araki, user_data[3], user_data[4], user_data[5], user_data[6])
     cursor.execute(
         "UPDATE users SET last_worker_claim = ? WHERE user_id = ?", (new_last_claim_time, user_id)
@@ -349,7 +371,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 **حقوق کارگری دریافت شد!**\n\n"
         f"👷‍♂️ تعداد کارگران (ارسام فتحی): {arsam_count}\n"
         f"⏱️ ساعت‌های محاسبه‌شده: {hours_passed} ساعت\n"
-        f"🎉 سود دریافتی: **{earned_araki}** نیروی اراکی به موجودی شما اضافه شد!",
+        f"🎉 سود دریافتی ({per_hour_rate} در هر ساعت): **{earned_araki}** نیروی اراکی اضافه شد!",
         parse_mode="Markdown",
     )
 
@@ -375,7 +397,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       update_user(user_id, user_data[2], user_data[3] + count, user_data[4], user_data[5], user_data[6])
 
     await update.message.reply_text(
-        f"⚡ تقویت انجام شد!\n{cost} نیروی اراکی مصرف شد و **{count} غلامی** (قدرت: 60) به ارتش اضافه شد.",
+        f"⚡ تقویت انجام شد!\n{cost} نیروی اراکی مصرف شد و **{count} غلامی** به ارتش اضافه شد.",
         parse_mode="Markdown",
     )
 
@@ -427,11 +449,10 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       update_user(user_id, user_data[2], user_data[3], user_data[4], user_data[5] + count, user_data[6])
 
     await update.message.reply_text(
-        f"💎 تقویت پویا انجام شد!\n{cost_pouya} نیروی پویا مصرف شد و **{count} نیروی صفرنیگا** (قدرت: 90) به ارتش شما اضافه شد.",
+        f"💎 تقویت پویا انجام شد!\n{cost_pouya} نیروی پویا مصرف شد و **{count} نیروی صفرنیگا** به ارتش شما اضافه شد.",
         parse_mode="Markdown",
     )
 
-  # دستور حمله
   elif text.startswith("حمله"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
@@ -456,7 +477,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not target_user_id:
       await update.message.reply_text(
-          "⚠️ برای حمله یا باید روی پیام کاربر ریپلی کنید یا آیدی عددی او را بنویسید! (مثال: `حمله 8854073031`)",
+          "⚠️ برای حمله یا باید روی پیام کاربر ریپلی کنید یا آیدی عددی او را بنویسید!",
           parse_mode="Markdown",
       )
       return
@@ -527,12 +548,11 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 {user.first_name}: {winner_lost_araki if winner_id == user_id else loser_lost_araki} سرباز از دست داد.\n"
         f"👤 {target_username_display}: {winner_lost_araki if winner_id == target_user_id else loser_lost_araki} سرباز از دست داد.\n\n"
         f"🛡️ **موجودی جدید دو طرف:**\n"
-        f"👤 {user.first_name} ➔ اراکی: {updated_u1[2]} | غلامی: {updated_u1[3]} | پویا: {updated_u1[4]} | صفرنیگا: {updated_u1[5]} | کارگر: {updated_u1[6]}\n"
-        f"👤 {target_username_display} ➔ اراکی: {updated_u2[2]} | غلامی: {updated_u2[3]} | پویا: {updated_u2[4]} | صفرنیگا: {updated_u2[5]} | کارگر: {updated_u2[6]}",
+        f"👤 {user.first_name} ➔ اراکی: {updated_u1[2]} | کارگر: {updated_u1[6]}\n"
+        f"👤 {target_username_display} ➔ اراکی: {updated_u2[2]} | کارگر: {updated_u2[6]}",
         parse_mode="Markdown",
     )
 
-  # دستورات: جنگ و بازی
   elif text.startswith("جنگ") or text.startswith("بازی"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستورات مسابقه فقط در داخل گروه‌ها قابل اجراست!")
@@ -567,7 +587,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚔️ **درخواست مسابقه و جنگ جدید!**\n\n"
         f"👤 سازنده بازی: {user.first_name}\n"
         f"🎯 تعداد نیرو (ورودی): {bet}\n"
-        f"🏆 جایزه برنده: {prize} اراکی (مجموع ورودی دو نفر)\n\n"
+        f"🏆 جایزه برنده: {prize} اراکی\n\n"
         f"برای ورود روی دکمه زیر کلیک کنید:",
         reply_markup=reply_markup,
         parse_mode="Markdown",
@@ -620,8 +640,8 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📤 **انتقال نیرو با موفقیت انجام شد!**\n\n"
         f"🔹 تعداد سرباز انتقال‌یافته: {transfer_amount}\n"
-        f"👤 فرستنده ({user.first_name}) - موجودی اراکی فعلی: {updated_sender[2]}\n"
-        f"👤 گیرنده ({target_user.first_name}) - موجودی اراکی جدید: {updated_target[2]}",
+        f"👤 فرستنده ({user.first_name}) - اراکی: {updated_sender[2]}\n"
+        f"👤 گیرنده ({target_user.first_name}) - اراکی: {updated_target[2]}",
         parse_mode="Markdown",
     )
 
@@ -637,7 +657,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "help_war":
       text = "⚔️ **بخش نبرد و جنگ:**\n\n- `جنگ [مبلغ]` یا `بازی [مبلغ]` : ایجاد مسابقه جنگی\n- `حمله` (ریپلی یا آیدی عددی) : حمله مستقیم"
     elif data == "help_army":
-      text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی\n- `حقوق کارگری` : دریافت سود کارگران (ارسام فتحی)\n- `تقویت کارگر [تعداد]` : خرید کارگر (۱۰,۰۰۰ اراکی)"
+      text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی\n- `حقوق کارگری` : دریافت سود کارگران (ارسام فتحی)\n- `تقویت کارگر [تعداد]` : خرید کارگر (حداکثر ۵ عدد)"
     elif data == "help_upgrade":
       text = "⚡ **بخش تقویت و ارتقا:**\n\n- `تقویت نیرو [تعداد]` : تبدیل اراکی به غلامی\n- `تقویت غلامی [تعداد]` : تبدیل غلامی به پویا\n- `تقویت پویا [تعداد]` : تبدیل پویا به صفرنیگا"
     elif data == "help_spin":
@@ -718,12 +738,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚔️ **نتیجه مسابقه اعلام شد!**\n\n"
         f"🏆 **برنده:** {winner_name}\n"
         f"💀 **بازنده:** {loser_name}\n\n"
-        f"🎁 پاداش برنده: {prize} اراکی (مجموع ورودی هر دو بازیکن)\n"
-        f"📊 موجودی سربازان دو طرف بروزرسانی شد.\n\n"
-        f"👤 **موجودی جدید برنده ({winner_name}):**\n"
-        f"🔸 اراکی: {final_winner_data[2]} | 🔹 غلامی: {final_winner_data[3]} | 🚀 پویا: {final_winner_data[4]} | 💎 صفرنیگا: {final_winner_data[5]} | کارگر: {final_winner_data[6]}\n\n"
-        f"👤 **موجودی جدید بازنده ({loser_name}):**\n"
-        f"🔸 اراکی: {final_loser_data[2]} | 🔹 غلامی: {final_loser_data[3]} | 🚀 پویا: {final_loser_data[4]} | 💎 صفرنیگا: {final_loser_data[5]} | کارگر: {final_loser_data[6]}",
+        f"🎁 پاداش برنده: {prize} اراکی\n\n"
+        f"👤 **موجودی جدید برنده ({winner_name}):** اراکی: {final_winner_data[2]} | کارگر: {final_winner_data[6]}\n"
+        f"👤 **موجودی جدید بازنده ({loser_name}):** اراکی: {final_loser_data[2]} | کارگر: {final_loser_data[6]}",
         parse_mode="Markdown",
     )
 
