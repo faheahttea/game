@@ -82,7 +82,7 @@ def calculate_total_soldiers(user_id, araki, gholami, pouya):
   return araki + (gholami * 30) + (pouya * 50)
 
 
-# محاسبه جایزه بازی بر اساس مبلغ ورودی (متناسب با جدول درخواستی)
+# محاسبه جایزه بازی بر اساس مبلغ ورودی
 def get_war_prize(bet):
   if bet <= 10:
     return 18
@@ -95,11 +95,10 @@ def get_war_prize(bet):
   elif bet >= 1000:
     return 1980
   else:
-    # فرمول تصاعدی کلی برای مبالغ میانی
     return int(bet * 1.9 + 8)
 
 
-# هندلر استارت در پی‌وی (فقط دکمه افزودن به گروه)
+# هندلر استارت در پی‌وی
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if update.effective_chat.type == "private":
     keyboard = [
@@ -119,25 +118,28 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# دستور راهنما برای گروه‌ها
+# دستور راهنما بصورت دکمه‌ای و دسته‌بندی‌شده
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if update.effective_chat.type == "private":
     return
   
-  help_text = (
-      "📖 **راهنمای دستورات بازی اراکی‌ها:**\n\n"
-      "🔹 `اراکی` - دریافت نیروی رایگان هر ۵ دقیقه\n"
-      "🔹 `موجودی` - نمایش موجودی ارتش و سربازان شما\n"
-      "🔹 `قدرت` - نمایش قدرت کل و جزئیات نیروها (اراکی: 44 | غلامی: 60 | پویا: 80)\n"
-      "🔹 `گردونه` - تست شانس و دریافت نیرو\n"
-      "🔹 `تقویت نیرو` - تبدیل 100 اراکی به 1 غلامی\n"
-      "🔹 `تقویت غلامی` - تبدیل 30 غلامی به 1 پویا\n"
-      "🔹 `جنگ [مبلغ]` - ایجاد مسابقه جنگی (مثال: `جنگ 50`)\n"
-      "🔹 `حمله` - حمله مستقیم به کاربر دیگر با ریپلی روی پیام او (گرفتن 1/3 نیروهای حریف)\n"
-      "🔹 `انتقال [تعداد]` - انتقال نیرو به کاربر دیگر با ریپلی روی پیام او\n"
-      "🔹 `خرید نیرو [تعداد]` - افزایش نیروی اراکی\n"
+  keyboard = [
+      [
+          InlineKeyboardButton("⚔️ بخش نبرد و جنگ", callback_data="help_war"),
+          InlineKeyboardButton("🛡️ ارتش و نیروها", callback_data="help_army")
+      ],
+      [
+          InlineKeyboardButton("⚡ تقویت و ارتقا", callback_data="help_upgrade"),
+          InlineKeyboardButton("🎡 شانس و گردونه", callback_data="help_spin")
+      ]
+  ]
+  reply_markup = InlineKeyboardMarkup(keyboard)
+  await update.message.reply_text(
+      "📖 **منوی راهنمای جامع بازی اراکی‌ها**\n\n"
+      "لطفاً یکی از بخش‌های زیر را انتخاب کنید تا دستورات مربوط به آن نمایش داده شود:",
+      reply_markup=reply_markup,
+      parse_mode="Markdown",
   )
-  await update.message.reply_text(help_text, parse_mode="Markdown")
 
 
 # دستورات اصلی متنی (بدون اسلش)
@@ -150,10 +152,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_id = user.id
   username = user.username or user.first_name
 
-  # بررسی و ثبت کاربر در دیتابیس
   user_data = get_user(user_id, username)
-  # ساختار: (user_id, username, araki, gholami, pouya, last_claim, last_spin)
-
   now = int(time.time())
 
   # دستور راهنما
@@ -192,13 +191,11 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # ۱. دستور: اراکی (دریافت نیرو هر ۵ دقیقه)
+  # ۱. دستور: اراکی (دریافت نیروی شانسی از 1 تا 5000 هر ۵ دقیقه)
   if text == "اراکی":
     if user_id == OWNER_ID:
-      update_user(user_id, user_data[2] + 1000, user_data[3], user_data[4])
-      await update.message.reply_text(
-          "👑 مالک بزرگ! 1000 نیروی اراکی به حساب شما اضافه شد."
-      )
+      update_user(user_id, user_data[2] + 10000, user_data[3], user_data[4])
+      await update.message.reply_text("👑 مالک بزرگ! نیروی ویژه به حساب شما اضافه شد.")
       return
 
     last_claim = user_data[5]
@@ -211,46 +208,47 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
       return
 
-    gained = random.randint(5, 15)
+    gained = random.randint(1, 5000)
     cursor.execute(
         "UPDATE users SET araki = araki + ?, last_claim = ? WHERE user_id = ?",
         (gained, now, user_id),
     )
     conn.commit()
     await update.message.reply_text(
-        f"به بازی اراکی ها خوش امدید! 🎉\n{gained} نیروی اراکی به ارتش شما اضافه شد."
+        f"🎉 شانس ارتش شما چرخید!\nتعداد **{gained}** نیروی اراکی به ارتش شما اضافه شد."
     )
 
-  # ۲. دستور: خرید نیرو تعداد
-  elif text.startswith("خرید نیرو"):
-    parts = text.split()
-    if len(parts) < 3 or not parts[2].isdigit():
+  # ۲. دستور: گردونه (کسر 100 نیرو و شانس‌های جدید)
+  elif text == "گردونه":
+    spin_cost = 100
+    if user_id != OWNER_ID and user_data[2] < spin_cost:
       await update.message.reply_text(
-          "⚠️ فرمت اشتباه! لطفاً به این شکل استفاده کنید:\n`خرید نیرو 50`",
-          parse_mode="Markdown",
+          f"⚠️ موجودی شما برای این بازی کافی نیست! (گردونه نیازمند {spin_cost} نیروی اراکی است)"
       )
       return
-    count = int(parts[2])
-    update_user(user_id, user_data[2] + count, user_data[3], user_data[4])
-    await update.message.reply_text(
-        f"✅ تعداد {count} نیروی اراکی با موفقیت خریداری شد!"
-    )
 
-  # ۳. دستور: گردونه
-  elif text == "گردونه":
+    if user_id != OWNER_ID:
+      update_user(user_id, user_data[2] - spin_cost, user_data[3], user_data[4])
+      user_data = get_user(user_id)
+
+    # شانس‌های گردونه:
+    # 0.0000000000001% -> 100000
+    # 1% -> 5000
+    # 25% -> 1000
+    # 50% -> 500 / 100 / 50 / 1 (بقیه بازه‌ها)
     rand_val = random.random() * 100
-    if rand_val <= 1:
+    if rand_val <= 0.0000000000001:
+      prize = 100000
+      msg = "💎 فوق اسطوره‌ای! جایزه باورنکردنی ۱۰۰,۰۰۰ نیرویی برنده شدید!"
+    elif rand_val <= 1.0:
       prize = 5000
-      msg = "🌟 فوق‌العاده کمیاب! برنده جایزه افسانه‌ای ۵۰۰۰ نیرویی شدید (۱٪ شانس)!"
-    elif rand_val <= 10:
+      msg = "🌟 افسانه‌ای! ۵۰۰۰ نیرو برنده شدید!"
+    elif rand_val <= 26.0:
       prize = 1000
       msg = "🔥 عالی! ۱۰۰۰ نیرو برنده شدید!"
-    elif rand_val <= 40:
-      prize = 100
-      msg = "✨ ۱۰۰ نیرو برنده شدید!"
-    elif rand_val <= 85:
-      prize = 50
-      msg = "⭐ ۵۰ نیرو برنده شدید!"
+    elif rand_val <= 76.0:
+      prize = random.choice([500, 100, 50])
+      msg = f"✨ تبریک! {prize} نیرو برنده شدید!"
     else:
       prize = 1
       msg = "💫 شانس با شما یار نبود، ۱ نیرو برنده شدید!"
@@ -261,51 +259,63 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     conn.commit()
     await update.message.reply_text(
-        f"🎡 **گردونه شانس اراکی‌ها:**\n{msg}\n🎁 پاداش: {prize} اراکی",
+        f"🎡 **گردونه شانس اراکی‌ها (هزینه: ۱۰۰ نیرو):**\n{msg}\n🎁 پاداش خالص: {prize} اراکی",
         parse_mode="Markdown",
     )
 
-  # ۴. دستور: تقویت نیرو (تبدیل ۱۰۰ اراکی به ۱ غلامی با بررسی کمبود نیرو)
-  elif text == "تقویت نیرو":
-    if user_id != OWNER_ID and user_data[2] < 100:
+  # ۳. دستور: تقویت نیرو (با پشتیبانی از تعداد مثل "تقویت نیرو 10")
+  elif text.startswith("تقویت نیرو"):
+    parts = text.split()
+    count = 1
+    if len(parts) >= 3 and parts[2].isdigit():
+      count = int(parts[2])
+
+    cost = count * 100
+    if user_id != OWNER_ID and user_data[2] < cost:
       await update.message.reply_text(
-          "⚠️ موجودی شما برای این بازی کافی نیست! (حداقل 100 نیروی اراکی نیاز است)"
+          f"⚠️ موجودی شما برای این بازی کافی نیست! (حداقل به {cost} نیروی اراکی نیاز دارید)"
       )
       return
 
     if user_id != OWNER_ID:
-      new_araki = user_data[2] - 100
-      new_gholami = user_data[3] + 1
+      new_araki = user_data[2] - cost
+      new_gholami = user_data[3] + count
       update_user(user_id, new_araki, new_gholami, user_data[4])
     else:
-      update_user(user_id, user_data[2], user_data[3] + 1, user_data[4])
+      update_user(user_id, user_data[2], user_data[3] + count, user_data[4])
 
     await update.message.reply_text(
-        "⚡ تقویت انجام شد!\n100 نیروی اراکی مصرف شد و **1 غلامی** (قدرت: 60) به ارتش اضافه شد.",
+        f"⚡ تقویت انجام شد!\n{cost} نیروی اراکی مصرف شد و **{count} غلامی** (قدرت: 60) به ارتش اضافه شد.",
         parse_mode="Markdown",
     )
 
-  # ۵. دستور: تقویت غلامی (تبدیل ۳۰ غلامی به ۱ پویا با بررسی کمبود نیرو)
-  elif text == "تقویت غلامی":
-    if user_id != OWNER_ID and user_data[3] < 30:
+  # ۴. دستور: تقویت غلامی (تبدیل ۳۰ غلامی به ۱ پویا با پشتیبانی از تعداد و کسر دقیق)
+  elif text.startswith("تقویت غلامی"):
+    parts = text.split()
+    count = 1
+    if len(parts) >= 2 and parts[2].isdigit():
+      count = int(parts[2])
+
+    cost_gholami = count * 30
+    if user_id != OWNER_ID and user_data[3] < cost_gholami:
       await update.message.reply_text(
-          "⚠️ موجودی شما برای این بازی کافی نیست! (حداقل 30 غلامی نیاز است)"
+          f"⚠️ موجودی شما برای این بازی کافی نیست! (به {cost_gholami} غلامی نیاز است)"
       )
       return
 
     if user_id != OWNER_ID:
-      new_gholami = user_data[3] - 30
-      new_pouya = user_data[4] + 1
+      new_gholami = user_data[3] - cost_gholami
+      new_pouya = user_data[4] + count
       update_user(user_id, user_data[2], new_gholami, new_pouya)
     else:
-      update_user(user_id, user_data[2], user_data[3], user_data[4] + 1)
+      update_user(user_id, user_data[2], user_data[3] - cost_gholami, user_data[4] + count)
 
     await update.message.reply_text(
-        "🚀 تقویت نسخه ۲ انجام شد!\n30 غلامی مصرف شد و **1 نیروی پویا** (قدرت: 80) به ارتش پیوست.",
+        f"🚀 تقویت نسخه ۲ انجام شد!\n{cost_gholami} غلامی مصرف شد و **{count} نیروی پویا** (قدرت: 80) به ارتش پیوست.",
         parse_mode="Markdown",
     )
 
-  # ۶. دستور: حمله (ریپلی روی حریف با تمام نیروها)
+  # ۵. دستور: حمله مستقیم با نمایش تعداد نیروهای از دست رفته
   elif text == "حمله":
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
@@ -328,13 +338,11 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       return
 
     target_data = get_user(target_user.id, target_user.username or target_user.first_name)
-    target_total_soldiers = calculate_total_soldiers(target_user.id, target_data[2], target_data[3], target_data[4])
 
-    # محاسبه قدرت کل دو طرف برای تعیین برنده حمله
+    # قدرت و امتیازات حمله
     attacker_power = calculate_total_power(user_id, user_data[2], user_data[3], user_data[4])
     target_power = calculate_total_power(target_user.id, target_data[2], target_data[3], target_data[4])
 
-    # افزودن ضریب شانس و بررسی تقویت‌شدگان (غلامی و پویا)
     attacker_boost = (user_data[3] * 2) + (user_data[4] * 4)
     target_boost = (target_data[3] * 2) + (target_data[4] * 4)
 
@@ -350,18 +358,19 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       winner_name, loser_name = target_user.first_name, user.first_name
       winner_data, loser_data = target_data, user_data
 
-    # گرفتن یک سوم نیروهای بازنده توسط برنده
+    # محاسبه تلفات و غنائم
+    lost_araki = random.randint(2, 10)
     loot_araki = loser_data[2] // 3
     loot_gholami = loser_data[3] // 3
     loot_pouya = loser_data[4] // 3
 
-    # کسر نیروهای غارت شده و تلفات شانسی از بازنده
-    new_loser_araki = max(0, loser_data[2] - loot_araki - random.randint(2, 8))
+    # به‌روزرسانی بازنده
+    new_loser_araki = max(0, loser_data[2] - loot_araki - lost_araki)
     new_loser_gholami = max(0, loser_data[3] - loot_gholami)
     new_loser_pouya = max(0, loser_data[4] - loot_pouya)
     update_user(loser_id, new_loser_araki, new_loser_gholami, new_loser_pouya)
 
-    # افزودن نیروهای غارت شده به برنده همراه تلفات جزئی شانسی
+    # به‌روزرسانی برنده
     new_winner_araki = winner_data[2] + loot_araki - random.randint(1, 5)
     new_winner_gholami = winner_data[3] + loot_gholami
     new_winner_pouya = winner_data[4] + loot_pouya
@@ -374,13 +383,14 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚔️ **نتیجه نبرد و حمله مستقیم!**\n\n"
         f"🏆 **برنده میدان:** {winner_name}\n"
         f"💀 **شکست خورده:** {loser_name}\n\n"
+        f"💥 **تلفات جنگ:** در این حمله تعدادی از نیروهای دو طرف از دست رفتند.\n\n"
         f"🛡️ **موجودی جدید دو طرف:**\n"
         f"👤 {user.first_name} ➔ اراکی: {updated_u1[2]} | غلامی: {updated_u1[3]} | پویا: {updated_u1[4]}\n"
         f"👤 {target_user.first_name} ➔ اراکی: {updated_u2[2]} | غلامی: {updated_u2[3]} | پویا: {updated_u2[4]}",
         parse_mode="Markdown",
     )
 
-  # ۷. دستور: جنگ (مثلا جنگ 50)
+  # ۶. دستور: جنگ
   elif text.startswith("جنگ"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور جنگ فقط در داخل گروه‌ها قابل اجراست!")
@@ -403,7 +413,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     keyboard = [
-        [InlineKeyboardButton("⚔️ ورودی به بازی", callback_data=f"join_war_{chat_id}")],
+        [InlineKeyboardButton("⚔️ پیوستن به بازی", callback_data=f"join_war_{chat_id}")],
         [InlineKeyboardButton("❌ لغو بازی", callback_data=f"cancel_war_{chat_id}")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -427,7 +437,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "message_id": sent_msg.message_id,
     }
 
-  # ۸. دستور: انتقال نیرو
+  # ۷. دستور: انتقال نیرو
   elif text.startswith("انتقال") or text.startswith("انتشار"):
     parts = text.split()
     if len(parts) < 2 or not parts[1].isdigit():
@@ -473,14 +483,32 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# مدیریت دکمه‌های شیشه‌ای (ورود به جنگ و لغو بازی)
+# مدیریت کلیک دکمه‌های شیشه‌ای
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   query = update.callback_query
-  await query.answer()
   data = query.data
-  chat_id = query.message.chat_id
   user = query.from_user
   user_id = user.id
+
+  # مدیریت منوهای راهنما
+  if data.startswith("help_"):
+    await query.answer()
+    if data == "help_war":
+      text = "⚔️ **بخش نبرد و جنگ:**\n\n- `جنگ [مبلغ]` : ایجاد مسابقه جنگی\n- `حمله` : ریپلی روی کاربر و حمله مستقیم با تمام نیروها"
+    elif data == "help_army":
+      text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی\n- `انتقال [تعداد]` : فرستادن نیرو به دوستان"
+    elif data == "help_upgrade":
+      text = "⚡ **بخش تقویت و ارتقا:**\n\n- `تقویت نیرو [تعداد]` : تبدیل اراکی به غلامی (هر 100 اراکی = 1 غلامی)\n- `تقویت غلامی [تعداد]` : تبدیل غلامی به پویا (هر 30 غلامی = 1 پویا)"
+    elif data == "help_spin":
+      text = "🎡 **بخش شانس و گردونه:**\n\n- `گردونه` : چرخش گردونه با هزینه 100 نیرو و شانس دریافت جوایز بزرگ!"
+    else:
+      text = "راهنمای بازی اراکی‌ها"
+    
+    await query.edit_message_text(text, parse_mode="Markdown")
+    return
+
+  await query.answer()
+  chat_id = query.message.chat_id
 
   if data.startswith("join_war_"):
     if chat_id not in active_wars:
@@ -489,7 +517,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     war = active_wars[chat_id]
     if user_id == war["creator_id"]:
-      await query.answer("شما سازنده این بازی هستید و نمی‌توانید حریف خود باشید!", show_alert=True)
+      await query.answer("شما مالک بازی هستید و نمی‌توانید حریف خود باشید!", show_alert=True)
       return
 
     bet = war["bet"]
@@ -545,7 +573,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     war = active_wars[chat_id]
     if user_id != war["creator_id"] and user_id != OWNER_ID:
-      await query.answer("فقط سازنده بازی می‌تواند آن را لغو کند!", show_alert=True)
+      await query.answer("شما سازنده بازی نیستید!", show_alert=True)
       return
 
     del active_wars[chat_id]
