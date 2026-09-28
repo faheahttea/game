@@ -22,9 +22,6 @@ logger = logging.getLogger(__name__)
 TOKEN = "8559844059:AAHzw5hpToGqME76APSQvjfV0AbThOm277s"
 OWNER_ID = 8854073031
 
-# آیدی عددی شخصی که نباید به او حمله شود
-IMMUNE_USER_ID = 0  # اگر آیدی خاصی مد نظر است جایگزین کنید (مثلا 123456789)
-
 # ذخیره وضعیت مالک (آیا مالک در حالت بازیکن است یا خیر)
 owner_modes = {}
 
@@ -199,12 +196,16 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await help_handler(update, context)
     return
 
-  # پنل کاربر (ارسال مشخصات و آیدی عددی کاربر)
+  # پنل کاربر (با پشتیبانی از ریپلی روی شخص مورد نظر یا نمایش خود کاربر)
   if text == "پنل کاربر":
+    target_user = user
+    if update.message.reply_to_message:
+      target_user = update.message.reply_to_message.from_user
+    
     await update.message.reply_text(
         f"👤 **پنل اطلاعات کاربر:**\n\n"
-        f"🔹 نام: {user.first_name}\n"
-        f"🆔 آیدی عددی شما: `{user_id}`\n\n"
+        f"🔹 نام: {target_user.first_name}\n"
+        f"🆔 آیدی عددی: `{target_user.id}`\n\n"
         f"می‌توانید از این آیدی برای انجام حملات یا دستورات استفاده کنید.",
         parse_mode="Markdown",
     )
@@ -392,7 +393,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # ۶. دستور: حمله مستقیم (با پشتیبانی از ریپلی یا آیدی عددی و مستثنی کردن شخص خاص)
+  # ۶. دستور: حمله مستقیم (بدون محدودیت، پشتیبانی کامل از ریپلی و آیدی عددی)
   elif text.startswith("حمله"):
     if update.effective_chat.type == "private":
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
@@ -401,7 +402,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_user_id = None
     target_username_display = "کاربر هدف"
 
-    # بررسی اینکه آیا به صورت ریپلی است یا آیدی عددی همراه دستور نوشته شده (مثل: حمله 123456789)
     parts = text.split()
     if update.message.reply_to_message:
       target_user = update.message.reply_to_message.from_user
@@ -420,11 +420,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
           "⚠️ برای حمله یا باید روی پیام کاربر ریپلی کنید یا آیدی عددی او را بنویسید! (مثال: `حمله 123456789`)",
           parse_mode="Markdown",
       )
-      return
-
-    # بررسی اینکه آیا کاربر جزو افراد مصون (غیرقابل حمله) است
-    if target_user_id == IMMUNE_USER_ID:
-      await update.message.reply_text("⚠️ شما به این شخص خاص نمی‌توانید حمله کنید!")
       return
 
     if target_user_id == user_id:
@@ -457,7 +452,6 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       winner_name, loser_name = target_username_display, user.first_name
       winner_data, loser_data = target_data, user_data
 
-    # محاسبه تلفات دقیق برای هر دو طرف
     loser_lost_araki = random.randint(5, 15)
     winner_lost_araki = random.randint(2, 8)
 
@@ -466,14 +460,12 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loot_pouya = loser_data[4] // 3
     loot_zeroniga = loser_data[5] // 3
 
-    # اعمال تغییرات بازنده
     new_loser_araki = max(0, loser_data[2] - loot_araki - loser_lost_araki)
     new_loser_gholami = max(0, loser_data[3] - loot_gholami)
     new_loser_pouya = max(0, loser_data[4] - loot_pouya)
     new_loser_zeroniga = max(0, loser_data[5] - loot_zeroniga)
     update_user(loser_id, new_loser_araki, new_loser_gholami, new_loser_pouya, new_loser_zeroniga)
 
-    # اعمال تغییرات برنده
     is_winner_owner_admin = (winner_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
     if not is_winner_owner_admin:
       new_winner_araki = max(0, winner_data[2] + loot_araki - winner_lost_araki)
@@ -612,7 +604,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "help_spin":
       text = "🎡 **بخش شانس و گردونه:**\n\n- `گردونه` : چرخش گردونه با هزینه 100 نیرو و شانس دریافت جوایز بزرگ!"
     elif data == "help_panel":
-      text = "👤 **بخش پنل کاربر:**\n\n- `پنل کاربر` : نمایش اطلاعات حساب کاربری و آیدی عددی اختصاصی شما جهت انجام دستورات."
+      text = "👤 **بخش پنل کاربر:**\n\n- `پنل کاربر` (به همراه ریپلی روی شخص) : نمایش اطلاعات حساب کاربری و آیدی عددی کاربر مورد نظر جهت انجام دستورات."
     elif data == "help_back":
       keyboard_main = [
           [
