@@ -25,11 +25,14 @@ OWNER_ID = 8854073031
 # ذخیره وضعیت مالک (آیا مالک در حالت بازیکن است یا خیر)
 owner_modes = {}
 
+# ذخیره زمان آخرین حمله کاربران (برای محدودیت ۲۰ دقیقه)
+last_attack_times = {}
+
 # اتصال به دیتابیس SQLite
 conn = sqlite3.connect("araki_game.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# ایجاد جدول کاربران (اضافه شدن فیلد last_attack برای محدودیت زمانی ۲۰ دقیقه)
+# ایجاد جدول کاربران (بدون فیلدهای ارسام فتحی)
 cursor.execute(
     """
 CREATE TABLE IF NOT EXISTS users (
@@ -40,8 +43,7 @@ CREATE TABLE IF NOT EXISTS users (
     pouya INTEGER DEFAULT 0,
     zeroniga INTEGER DEFAULT 0,
     last_claim INTEGER DEFAULT 0,
-    last_spin INTEGER DEFAULT 0,
-    last_attack INTEGER DEFAULT 0
+    last_spin INTEGER DEFAULT 0
 )
 """
 )
@@ -352,7 +354,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_owner_admin:
       new_pouya = user_data[4] - cost_pouya
-      new_zeroniga = user_data[5] + cooldown_check_pass = True
+      new_zeroniga = user_data[5] + count
       update_user(user_id, user_data[2], user_data[3], new_pouya, new_zeroniga)
     else:
       update_user(user_id, user_data[2], user_data[3], user_data[4], user_data[5] + count)
@@ -367,17 +369,17 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       await update.message.reply_text("⚠️ دستور حمله فقط در داخل گروه‌ها قابل اجراست!")
       return
 
-    # بررسی محدودیت زمانی ۲۰ دقیقه برای دستور حمله (فقط برای کاربران عادی)
+    # بررسی محدودیت زمانی ۲۰ دقیقه برای دستور حمله (مالک معاف است)
     is_owner_admin = (user_id == OWNER_ID and not owner_modes.get(OWNER_ID, {}).get("is_player_mode", False))
-    if not is_owner_admin:
-      last_attack_time = user_data[8] if len(user_data) > 8 and user_data[8] else 0
-      cooldown_period = 20 * 60  # ۲۰ دقیقه بر حسب ثانیه
-      if now - last_attack_time < cooldown_period:
-        remaining_time = cooldown_period - (now - last_attack_time)
-        mins = remaining_time // 60
-        secs = remaining_time % 60
+    if not is_owner_admin and user_id in last_attack_times:
+      elapsed = now - last_attack_times[user_id]
+      cooldown = 20 * 60  # ۲۰ دقیقه بر حسب ثانیه
+      if elapsed < cooldown:
+        remaining = cooldown - elapsed
+        mins = remaining // 60
+        secs = remaining % 60
         await update.message.reply_text(
-            f"⏳ شما خسته هستید و برای حمله مجدد باید صبر کنید!\nزمان باقی‌مانده: {mins} دقیقه و {secs} ثانیه."
+            f"⏳ شما تازه حمله کرده‌اید! برای حمله مجدد باید ۲۰ دقیقه صبر کنید.\nزمان باقی‌مانده: {mins} دقیقه و {secs} ثانیه."
         )
         return
 
@@ -400,7 +402,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not target_user_id:
       await update.message.reply_text(
-          "⚠️ برای حمله یا باید روی پیام کاربر ریپلی کنید یا آیدی عددی او را بنویسید!",
+          "⚠️️ برای حمله یا باید روی پیام کاربر ریپلی کنید یا آیدی عددی او را بنویسید!",
           parse_mode="Markdown",
       )
       return
@@ -411,7 +413,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     attacker_total_soldiers = calculate_total_soldiers(user_id, user_data[2], user_data[3], user_data[4], user_data[5])
     if not is_owner_admin and attacker_total_soldiers < 10:
-      await update.message.reply_text("⚠️ موجودی شما برای این بازی کافی نیست!")
+      await update.message.reply_text("⚠️️ موجودی شما برای این بازی کافی نیست!")
       return
 
     target_data = get_user(target_user_id, target_username_display)
@@ -456,9 +458,9 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
       new_winner_zeroniga = winner_data[5] + loot_zeroniga
       update_user(winner_id, new_winner_araki, new_winner_gholami, new_winner_pouya, new_winner_zeroniga)
 
-    # آپدیت زمان آخرین حمله برای کاربر مهاجم
-    cursor.execute("UPDATE users SET last_attack = ? WHERE user_id = ?", (now, user_id))
-    conn.commit()
+    # ثبت زمان انجام حمله برای کاربر
+    if not is_owner_admin:
+      last_attack_times[user_id] = now
 
     updated_u1 = get_user(user_id)
     updated_u2 = get_user(target_user_id)
@@ -578,7 +580,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if data.startswith("help_"):
     await query.answer()
     if data == "help_war":
-      text = "⚔️ **بخش نبرد و جنگ:**\n\n- `جنگ [مبلغ]` یا `بازی [مبلغ]` : ایجاد مسابقه جنگی\n- `حمله` (ریپلی یا آیدی عددی) : حمله مستقیم (محدودیت هر ۲۰ دقیقه)"
+      text = "⚔️ **بخش نبرد و جنگ:**\n\n- `جنگ [مبلغ]` یا `بازی [مبلغ]` : ایجاد مسابقه جنگی\n- `حمله` (ریپلی یا آیدی عددی) : حمله مستقیم (هر ۲۰ دقیقه یکبار)"
     elif data == "help_army":
       text = "🛡️ **بخش ارتش و نیروها:**\n\n- `اراکی` : دریافت نیروی رایگان (هر ۵ دقیقه)\n- `موجودی` : نمایش کل نیروها\n- `قدرت` : نمایش قدرت رزمی"
     elif data == "help_upgrade":
